@@ -1,0 +1,40 @@
+name: "CI/CD Pipeline"
+
+on:
+  push:
+    branches:
+      - main
+      - "release/**"
+
+  pull_request:
+    branches:
+      - main
+      - "release/**"
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check environment
+        run: |
+          hostname
+          whoami
+          docker version
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Test
+        run: go test
+
+      - name: Build and Deploy
+        run: docker compose up -d --build
+
+      - name: Check containers
+        run: docker compose ps
+
+      - name: Show logs
+        run: docker compose logs --tail=100

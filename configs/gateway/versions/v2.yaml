@@ -1,0 +1,23 @@
+clusters:
+  - name: "products_cluster"
+    servers:
+      - url: "http://172.23.112.1:8090"
+      - url: "http://172.23.112.1:9000"
+      - url: "http://172.23.112.1:8090"
+
+  - name: "health_cluster"
+    servers:
+      - url: "http://127.0.0.1:9060"
+
+routes:
+  - path: "/api/products"
+    cluster: "products_cluster"
+    target: "/api/products/"
+
+  - path: "/api/health"
+    cluster: "health_cluster"
+    target: "/health"
+
+ratelimit:
+  max_time_for_token: 6
+  number_of_tokens: 10
