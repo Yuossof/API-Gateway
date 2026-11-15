@@ -4,9 +4,6 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: go-api-gateway
-    ports:
-      - "8080:8080"
-      - "2112:2112"
     environment:
       REDIS_URL: redis://redis:6379/0
     depends_on:
