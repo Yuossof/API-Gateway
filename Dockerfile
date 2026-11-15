@@ -24,10 +24,8 @@ RUN addgroup -S appgroup && \
 WORKDIR /app
 
 COPY --from=builder /server ./server
-<<<<<<< HEAD
+
 COPY --from=builder /app/configs/gateway/versions ./configs/gateway/versions
-=======
->>>>>>> 6f82c121fd53d7d42d588dfbe6d6c0b7fdc3687f
 
 USER appuser
 
