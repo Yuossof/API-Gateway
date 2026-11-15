@@ -1,5 +1,4 @@
 services:
-<<<<<<< HEAD
   gateway:
     build:
       context: .
@@ -32,32 +31,3 @@ services:
 
 volumes:
   redis-data:
-=======
-  prometheus:
-    image: prom/prometheus
-    container_name: gateway-prometheus
-    ports:
-      - "9090:9090"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    restart: unless-stopped
-
-  grafana:
-    image: grafana/grafana
-    container_name: gateway-grafana
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana-data:/var/lib/grafana
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: 0192
-    restart: unless-stopped
-
-volumes:
-  prometheus-data:
-  grafana-data:
->>>>>>> 6f82c121fd53d7d42d588dfbe6d6c0b7fdc3687f
