@@ -3,10 +3,12 @@ package configmanager
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/Yuossof/go-api-gateway/internal/gatewayconfig"
@@ -31,18 +33,50 @@ func NewManager(versionsDir string, redis *redis.Client, switcher *runtime.Runti
 	}
 }
 
-func (m *Manager) Activate(versionName string) error {
+func (m *Manager) resolveConfigPath(input string) (string, error) {
+	cleaned := filepath.Clean(input)
+
+	// لو المستخدم بعت اسم ملف بس بدون مسار (مثلاً v1.yaml) وكان فيه versionsDir محدد
+	if !strings.Contains(cleaned, string(filepath.Separator)) && m.versionsDir != "" {
+		cleaned = filepath.Join(m.versionsDir, cleaned)
+	}
+
+	absPath, err := filepath.Abs(cleaned)
+	if err != nil {
+		return "", err
+	}
+
+	ext := strings.ToLower(filepath.Ext(absPath))
+	if ext != ".yaml" && ext != ".yml" {
+		return "", fmt.Errorf("unsupported config extension: %s", ext)
+	}
+
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return "", err
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("config path is a directory: %s", absPath)
+	}
+
+	return absPath, nil
+}
+
+func (m *Manager) Activate(configPath string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	gatewayConfig, err := gatewayconfig.LoadConfig(versionName, m.versionsDir)
+	resolvedPath, err := m.resolveConfigPath(configPath)
+	if err != nil {
+		return err
+	}
 
+	gatewayConfig, err := gatewayconfig.LoadConfig(resolvedPath)
 	if err != nil {
 		return err
 	}
 
 	newRuntime, err := runtime.BuildRuntime(gatewayConfig, m.redis)
-
 	if err != nil {
 		return err
 	}
@@ -52,7 +86,7 @@ func (m *Manager) Activate(versionName string) error {
 
 	m.switcher.SetRuntime(newRuntime)
 
-	m.activeVersion = versionName
+	m.activeVersion = resolvedPath
 	if previousRuntime != nil {
 		previousRuntime.Stop()
 	}
@@ -90,30 +124,23 @@ func (m *Manager) ActivationListener() error {
 		r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 
 		var request struct {
-			Version string `json:"version"`
+			Path string `json:"path"`
 		}
 
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil || strings.TrimSpace(request.Path) == "" {
 			http.Error(w, "invalid request", http.StatusBadRequest)
 			return
 		}
 
-		if request.Version == "" ||
-			filepath.Base(request.Version) != request.Version ||
-			filepath.Ext(request.Version) != ".yaml" {
-			http.Error(w, "invalid version", http.StatusBadRequest)
-			return
-		}
-
-		if err := m.Activate(request.Version); err != nil {
-			http.Error(w, "activation failed", http.StatusUnprocessableEntity)
+		if err := m.Activate(request.Path); err != nil {
+			http.Error(w, "activation failed: "+err.Error(), http.StatusUnprocessableEntity)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"success":        true,
-			"active_version": request.Version,
+			"active_version": m.activeVersion,
 		})
 	})
 

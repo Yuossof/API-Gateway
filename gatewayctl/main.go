@@ -10,16 +10,23 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 )
 
 func main() {
 	if len(os.Args) != 3 || os.Args[1] != "activate" {
-		fmt.Println("usage: gatewayctl activate <version>")
+		fmt.Println("usage: gatewayctl activate <path-to-config.yaml>")
 		os.Exit(1)
 	}
 
+	// تحويل المسار لمسار مطلق عشان يشتغل صح بغض النظر عن working directory بتاع الـ daemon
+	absPath, err := filepath.Abs(os.Args[2])
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	requestBody := map[string]string{
-		"version": os.Args[2],
+		"path": absPath,
 	}
 
 	body, err := json.Marshal(requestBody)

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 
 	"github.com/Yuossof/go-api-gateway/internal/cluster"
 	"github.com/go-playground/validator/v10"
@@ -29,9 +28,8 @@ type Config struct {
 	AllServersByCluster map[string][]cluster.Server `yaml:"-"`
 }
 
-func LoadConfig(fileName string, versionsDir string) (*Config, error) {
-	p := filepath.Join(versionsDir, fileName)
-	file, err := os.ReadFile(p)
+func LoadConfig(filePath string) (*Config, error) {
+	file, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
@@ -54,6 +52,6 @@ func LoadConfig(fileName string, versionsDir string) (*Config, error) {
 		config.AllServersByCluster[currentCluster.Name] = currentCluster.Servers
 	}
 
-	slog.Info("config loaded successfully")
+	slog.Info("config loaded successfully", "path", filePath)
 	return &config, nil
 }
