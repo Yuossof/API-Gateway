@@ -105,7 +105,7 @@ Run the gateway from the repository root so the relative configuration directory
 Activate a configuration file with the gateway control CLI:
 
 ```sh
-go run ./gatewayctl activate configs/gateway/versions/v2.yaml
+go run ./gatewayctl activate /file_path
 ```
 
 The CLI sends the absolute file path to the gateway over `/tmp/gateway.sock`. The new configuration replaces the active runtime only after it is loaded and validated.
