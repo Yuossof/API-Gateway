@@ -1,149 +1,135 @@
-# API Gateway
+# Go API Gateway
 
-A Go reverse-proxy gateway that routes requests to configured backend clusters. It checks backend health, balances requests across healthy servers, rate-limits clients with Redis, and supports switching configuration versions while running.
+A reverse-proxy API gateway written in Go. It supports YAML-defined routes and clusters, round-robin load balancing, periodic backend health checks, Redis-backed rate limiting, and runtime configuration switching.
 
 ## Features
 
-- Prefix-based routes with configurable upstream path rewriting
-- Round-robin load balancing across healthy servers
-- Backend health checks (`GET /health` on each configured server, every five seconds)
+- Prefix-based routes with upstream path rewriting
+- Round-robin load balancing across healthy backend servers
+- Health checks against `GET /health` every five seconds
 - Redis-backed token-bucket rate limiting
-- Runtime configuration activation over a local Unix socket
-<<<<<<< HEAD
-- Metrics endpoint at `/matrics` on port `2112`
-=======
+- Runtime activation of YAML configuration versions
 - Prometheus metrics at `/matrics` on port `2112`
->>>>>>> 6f82c121fd53d7d42d588dfbe6d6c0b7fdc3687f
 
 ## Requirements
 
 - Go `1.27.2` or later
-- Redis, reachable at the configured `REDIS_URL`
-- Backend servers listed in the active gateway configuration
+- Redis
+- Reachable backend servers
 
-The default Redis URL is `redis://localhost:6380/0`. For a local Redis instance on that port:
+## Local setup
 
-```sh
-docker run --name gateway-redis -p 6380:6379 -d redis:7-alpine
-```
+1. Start Redis on the default local port:
 
-## Run locally
+   ```sh
+   docker run --name gateway-redis -p 6380:6379 -d redis:7-alpine
+   ```
 
-1. Start Redis.
-2. Review `configs/gateway/versions/v1.yaml` and update its backend URLs for your environment. The checked-in products cluster uses example network addresses; the health cluster points to `127.0.0.1:9060`.
-3. Ensure every backend responds successfully to `GET /health`. The gateway marks a server unhealthy if this check fails.
-4. Start the optional local mock backend in another terminal if you want to use the included health route:
+2. From the repository root, start the included mock server:
 
    ```sh
    go run ./mock-server
    ```
 
-5. Start the gateway from the repository root:
+   The mock server listens on `127.0.0.1:9060` and exposes `/health`.
+
+3. Start the gateway in another terminal:
 
    ```sh
    go run ./cmd/gateway
    ```
 
-The gateway listens on port `8080` by default. Try the configured health route:
+The gateway listens on port `8080` by default. The metrics server listens on port `2112`.
+
+Try the configured health route:
 
 ```sh
 curl -i http://localhost:8080/api/health
 ```
 
-The mock server listens on port `9060` and responds to `/health`. To build the gateway binary instead:
+View gateway metrics:
 
 ```sh
-go build -o gateway ./cmd/gateway
-./gateway
+curl http://localhost:2112/matrics
 ```
 
-## Environment
+## Configuration
 
-The gateway loads a `.env` file from its working directory when present. Environment variables take precedence over defaults:
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `PORT` | `8080` | HTTP port for gateway traffic |
-| `REDIS_URL` | `redis://localhost:6380/0` | Redis connection URL |
-
-Run the gateway from the repository root so its relative configuration directory (`configs/gateway/versions/`) is found.
-
-## Gateway configuration
-
-Configuration versions are YAML files in `configs/gateway/versions/`. The gateway activates `v1.yaml` at startup. A version contains backend clusters, routes, and rate-limit settings; for example:
+The gateway loads `configs/gateway/versions/v1.yaml` at startup. Additional `.yaml` or `.yml` files can be activated while the gateway is running.
 
 ```yaml
 clusters:
-  - name: products
+  - name: "products_cluster"
     servers:
       - url: "http://127.0.0.1:9001"
       - url: "http://127.0.0.1:9002"
 
 routes:
   - path: "/api/products"
-    cluster: products
-    target: "/products"
+    cluster: "products_cluster"
+    target: "/api/products/"
 
 ratelimit:
   max_time_for_token: 6
   number_of_tokens: 10
 ```
 
-Each route matches its configured path and subpaths. The matched prefix is replaced by `target` while the remaining path suffix is preserved. Backend URLs should be reachable by the gateway and expose a successful `GET /health` endpoint.
+### Routes
 
-The rate limiter allows an initial burst of `number_of_tokens` requests per client IP and replenishes one token every `max_time_for_token` seconds. It requires a working Redis connection. When running behind a proxy, the gateway uses `X-Forwarded-For` (first address) or `X-Real-Ip` to identify the client; configure the proxy to overwrite these headers with trusted values.
+- `path` is the request prefix matched by the gateway.
+- `cluster` identifies the backend cluster used for the route.
+- `target` replaces the matched route prefix.
+- A server is eligible to receive traffic only when `GET /health` succeeds.
 
-### Activate a configuration version
+### Rate limiting
 
-While the gateway is running, activate another YAML file from the versions directory using the included CLI:
+The Redis rate limiter allows `number_of_tokens` requests per client IP and replenishes one token every `max_time_for_token` seconds.
+
+Client IPs are read from `X-Forwarded-For` or `X-Real-Ip`. Configure the proxy in front of the gateway to set these headers so they cannot be spoofed.
+
+## Environment variables
+
+The gateway loads `.env` from the working directory. Environment variables override file values.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `PORT` | `8080` | HTTP gateway port |
+| `REDIS_URL` | `redis://localhost:6380/0` | Redis connection URL |
+
+The checked-in `.env` uses `redis://localhost:6379/0`, while the application default uses port `6380`. Export `REDIS_URL=redis://localhost:6380/0` or update `.env` when starting Redis on port `6380`.
+
+Run the gateway from the repository root so the relative configuration directory is available.
+
+## Runtime configuration activation
+
+Activate a configuration file with the gateway control CLI:
 
 ```sh
-go run ./gatewayctl activate v2.yaml
+go run ./gatewayctl activate configs/gateway/versions/v2.yaml
 ```
 
-Activation sends a request to `/tmp/gateway.sock`, validates and builds the new runtime, then switches traffic to it. Only version file names ending in `.yaml` are accepted. `v1.yaml` and `v2.yaml` currently contain the same example configuration.
+The CLI sends the absolute file path to the gateway over `/tmp/gateway.sock`. The new configuration replaces the active runtime only after it is loaded and validated.
 
-<<<<<<< HEAD
-## Metrics
-
-The gateway exposes metrics at:
-=======
-## Metrics and monitoring
-
-The gateway serves Prometheus metrics at:
->>>>>>> 6f82c121fd53d7d42d588dfbe6d6c0b7fdc3687f
-
-```sh
-curl http://localhost:2112/matrics
-```
-
-<<<<<<< HEAD
 ## Docker Compose
 
-Build and start the gateway with Redis:
+The included Compose file builds the gateway and starts Redis:
 
 ```sh
 docker compose up --build
 ```
 
-The gateway is available on port `8080`, its metrics endpoint on port `2112`, and Redis on port `6380`.
-=======
-The repository includes Prometheus and Grafana services for local monitoring:
-
-```sh
-docker compose up -d
-```
-
-Prometheus is exposed on port `9090` and Grafana on port `3000`. The included Grafana defaults are intended for local development only; change them before using this setup outside a trusted local environment.
->>>>>>> 6f82c121fd53d7d42d588dfbe6d6c0b7fdc3687f
+Redis is published on port `6380`. The Compose file does not currently publish the gateway's `8080` or metrics `2112` ports.
 
 ## Tests
 
-Run the Go test suite from the repository root:
+Run the Go test suite:
 
 ```sh
 go test ./...
 ```
 
-An additional rate-limit request script is available at `scripts/ratelimit/rateLimit_test.sh`; it sends requests to a running gateway at `http://localhost:8080/api/health`.
-# API-Gateway
+To exercise rate limiting against a running gateway:
+
+```sh
+./scripts/ratelimit/rateLimit_test.sh
+```
